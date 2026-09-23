@@ -222,22 +222,6 @@
   /* ---------- main / days ---------- */
   main.board{flex:1;min-width:0;padding:16px 20px 60px;overflow-x:auto;}
 
-  .banner{
-    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
-    background:color-mix(in srgb, var(--accent-coding) 12%, var(--surface));
-    border-radius:13px;padding:10px 14px;margin-bottom:16px;font-size:12.5px;color:var(--text);
-  }
-  .banner strong{font-weight:650;}
-  .banner button{
-    margin-left:auto;border:none;background:var(--surface);color:var(--accent-coding);
-    border-radius:999px;padding:6px 12px;font-size:11.5px;font-weight:600;cursor:pointer;
-  }
-  .banner .dismiss{
-    margin-left:0;border:none;background:none;color:var(--text-2);cursor:pointer;
-    width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-  }
-  .banner .dismiss:hover{background:var(--surface-3);}
-
   .days-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
   @media(max-width:1099px){ .days-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));} }
   @media(max-width:640px){ .days-grid{grid-template-columns:1fr;} main.board{padding:14px 14px 60px;} }
@@ -295,7 +279,6 @@
 
   .b-meta-row{display:flex;align-items:center;gap:7px;margin:5px 0 0 27px;flex-wrap:wrap;}
   .b-eyebrow{font-size:10.5px;font-weight:650;color:var(--card-accent,var(--text-2));}
-  .b-example{font-size:8.5px;font-weight:650;letter-spacing:.02em;text-transform:uppercase;color:var(--text-3);border:1px solid var(--border);border-radius:4px;padding:0 4px;}
   .b-time{font-size:10.5px;color:var(--text-3);font-variant-numeric:tabular-nums;margin-left:auto;}
   .b-note{font-size:11px;color:var(--text-2);margin:4px 0 0 27px;}
 
@@ -320,9 +303,9 @@
   }
   .field textarea{resize:vertical;min-height:44px;}
   .field input:focus,.field select:focus,.field textarea:focus{outline:2px solid var(--accent-coding);outline-offset:1px;}
-  .catrow{display:flex;gap:7px;}
+  .catrow{display:flex;flex-wrap:wrap;gap:7px;}
   .catbtn{
-    flex:1;border:none;border-radius:11px;padding:9px 4px;font-size:11.5px;font-weight:650;cursor:pointer;
+    flex:1 1 calc(33.333% - 5px);border:none;border-radius:11px;padding:9px 4px;font-size:11.5px;font-weight:650;cursor:pointer;
     color:var(--text-2);background:var(--surface-2);border:1.6px solid transparent;
   }
   .catbtn.selected{color:var(--cbtn-color);border-color:var(--cbtn-color);background:color-mix(in srgb, var(--cbtn-color) 14%, var(--surface));}
@@ -336,7 +319,6 @@
   body.mode-month .month-wrap{display:block;}
   body.mode-month .days-grid{display:none;}
   body.mode-month .shell aside.library{display:none;}
-  body.mode-month .banner{display:none;}
   @media(min-width:1000px){ body.mode-month main.board{padding-left:20px;} }
 
   .month-weekdays{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-bottom:6px;}
@@ -433,11 +415,6 @@
     </aside>
 
     <main class="board">
-      <div class="banner" id="exampleBanner" hidden>
-        <span><strong>Example week —</strong> a few sample blocks are dropped in so you can see how it works.</span>
-        <button id="clearExamplesBtn" type="button">Clear examples</button>
-        <button class="dismiss" id="dismissBanner" type="button" aria-label="Dismiss"></button>
-      </div>
       <div class="days-grid" id="daysGrid"></div>
 
       <div class="month-wrap" id="monthWrap">
@@ -462,7 +439,7 @@
         <input type="text" id="f-title" maxlength="80" required>
       </div>
       <div class="field" id="catField" hidden>
-        <label>Category</label>
+        <label>Type</label>
         <div class="catrow" id="catRow"></div>
       </div>
       <div class="field">
@@ -553,6 +530,22 @@
     {key:"social", name:"Social & Personal"}
   ];
 
+  // The full set of "kinds" offered when creating or editing a block you typed
+  // yourself — workout/coding reuse those blocks' own colors, the rest are the
+  // three custom categories.
+  var CUSTOM_KINDS = [
+    {key:"workout", name:"Workout", color:"var(--accent-workout)"},
+    {key:"coding", name:"Coding Practice", color:"var(--accent-coding)"},
+    {key:"professional", name:"Professional", color:"var(--cat-professional)"},
+    {key:"coursework", name:"Coursework", color:"var(--cat-coursework)"},
+    {key:"social", name:"Social & Personal", color:"var(--cat-social)"}
+  ];
+  function kindOfBlock(b){
+    if(b.type === "workout") return "workout";
+    if(b.type === "coding") return "coding";
+    return b.category || "professional";
+  }
+
   // Recurring weekly commitments — auto-populated on every week. These sit outside
   // the Professional/Coursework/Social categories; each just carries a fixed color.
   var RECURRING_BLOCKS = [
@@ -565,7 +558,7 @@
   function catColorVar(key){ return "var(--cat-" + key + ")"; }
 
   // ---------- state ----------
-  var state = {weeks:{}, bannerDismissed:false, recurringSeeded:{}};
+  var state = {weeks:{}, recurringSeeded:{}};
 
   function loadState(){
     try{
@@ -578,6 +571,20 @@
     if(!state.weeks) state.weeks = {};
     if(!state.recurringSeeded) state.recurringSeeded = {};
     migrateRecurringColors();
+    stripExamples();
+  }
+
+  // The app used to seed a demo week with example blocks. Strip any that are
+  // still hanging around in someone's saved state from before this was removed.
+  function stripExamples(){
+    var changed = false;
+    Object.keys(state.weeks).forEach(function(wk){
+      state.weeks[wk].forEach(function(dayList, i){
+        var filtered = dayList.filter(function(b){ return !b.example; });
+        if(filtered.length !== dayList.length){ state.weeks[wk][i] = filtered; changed = true; }
+      });
+    });
+    if(changed) saveState();
   }
 
   // Blocks saved before recurring blocks got fixed colors only have a `category`.
@@ -654,42 +661,6 @@
     saveState();
   }
 
-  // ---------- seed example data (first run only) ----------
-  function maybeSeed(){
-    if(state.seeded) return;
-    state.seeded = true;
-    ensureRecurring(viewMonday);
-    var blocks = weekBlocks(viewMonday);
-    function push(dayIdx, type, data){
-      data.id = genId();
-      data.type = type;
-      data.done = false;
-      data.example = true;
-      blocks[dayIdx].push(data);
-    }
-    push(0, "workout", {label:"Chest & Shoulders", tag:"Day 1"});
-    push(0, "coding", {label:"SQL Basics", catKey:"sql", catName:"SQL"});
-    push(1, "coding", {label:"Probability (Book)", catKey:"stats", catName:"Probability & Stats"});
-    push(2, "workout", {label:"Back & Arms", tag:"Day 3"});
-    push(2, "custom", {label:"Study group @ library", note:"Bring laptop + cheat sheets", time:"6:00 PM", category:"social"});
-    push(3, "coding", {label:"Stats: Hypothesis Testing", catKey:"stats", catName:"Probability & Stats"});
-    push(4, "workout", {label:"Legs (Hamstrings & Glutes)", tag:"Day 5"});
-    push(5, "custom", {label:"Long run + meal prep", note:"", time:"", category:"social"});
-    saveState();
-  }
-
-  function hasAnyExamples(){
-    var ws = state.weeks;
-    for(var k in ws){ if(ws.hasOwnProperty(k)){ for(var i=0;i<ws[k].length;i++){ for(var j=0;j<ws[k][i].length;j++){ if(ws[k][i][j].example) return true; } } } }
-    return false;
-  }
-  function clearExamples(){
-    var ws = state.weeks;
-    for(var k in ws){ if(ws.hasOwnProperty(k)){ for(var i=0;i<ws[k].length;i++){ ws[k][i] = ws[k][i].filter(function(b){ return !b.example; }); } } }
-    saveState();
-    renderAll();
-  }
-
   // ---------- rendering: library ----------
   function renderLibrary(){
     var wEl = document.getElementById("workoutList");
@@ -738,7 +709,6 @@
     document.getElementById("newCustomBtn").innerHTML = ICONS.plus + " Custom block";
     document.getElementById("closeLibraryBtn").innerHTML = ICONS.xmark;
     document.getElementById("addIconHolder").innerHTML = ICONS.plus;
-    document.getElementById("dismissBanner").innerHTML = ICONS.xmark;
     document.getElementById("prevBtn").innerHTML = ICONS.chevronLeft;
     document.getElementById("nextBtn").innerHTML = ICONS.chevronRight;
     document.getElementById("modalCloseX").innerHTML = ICONS.xmark;
@@ -817,15 +787,15 @@
   function blockAccent(b){
     if(b.color) return b.color;
     if(b.type === "workout") return "var(--accent-workout)";
-    if(b.type === "coding") return catColorVar(b.catKey);
+    if(b.type === "coding") return b.catKey ? catColorVar(b.catKey) : "var(--accent-coding)";
     return catColorVar(b.category || "social");
   }
 
   function eyebrowInfo(b){
     if(b.recurringKey) return {text:"", color:"var(--text-2)"};
     var accent = blockAccent(b);
-    if(b.type === "workout") return {text:(b.tag||"").toUpperCase(), color:accent};
-    if(b.type === "coding") return {text:b.catName || "Coding", color:accent};
+    if(b.type === "workout") return {text:(b.tag||"").toUpperCase() || "Workout", color:accent};
+    if(b.type === "coding") return {text:b.catName || "Coding Practice", color:accent};
     var cc = CUSTOM_CATEGORIES.find(function(c){ return c.key === (b.category||"social"); });
     return {text:cc ? cc.name : "Custom", color:accent};
   }
@@ -845,10 +815,9 @@
       '<div class="b-actions"><button type="button" data-act="edit" aria-label="Edit">'+ICONS.pencil+'</button>' +
       '<button type="button" data-act="del" aria-label="Delete">'+ICONS.trash+'</button></div>' +
       '</div>';
-    if(eb.text || b.example || b.time){
+    if(eb.text || b.time){
       html += '<div class="b-meta-row">';
       if(eb.text) html += '<span class="b-eyebrow" style="color:'+eb.color+'">'+escapeHtml(eb.text)+'</span>';
-      if(b.example) html += '<span class="b-example">Example</span>';
       if(b.time) html += '<span class="b-time">'+escapeHtml(b.time)+'</span>';
       html += '</div>';
     }
@@ -871,11 +840,6 @@
     });
 
     return card;
-  }
-
-  function renderBanner(){
-    var banner = document.getElementById("exampleBanner");
-    banner.hidden = mode !== "week" || state.bannerDismissed || !hasAnyExamples();
   }
 
   function escapeHtml(s){
@@ -973,7 +937,6 @@
     document.getElementById("dateRange").textContent = mode === "week" ? fmtRange(viewMonday) : fmtMonth(viewMonth);
     renderDays();
     renderMonth();
-    renderBanner();
   }
 
   // ---------- mutations ----------
@@ -981,7 +944,7 @@
 
   function addBlockFromLibrary(dayIdx, data){
     var blocks = weekBlocks(viewMonday);
-    var b = {id:genId(), type:data.type, label:data.label, done:false};
+    var b = {id:genId(), type:data.type, label:data.label, done:false, fromLibrary:true};
     if(data.type === "workout"){ b.tag = data.tag; }
     if(data.type === "coding"){ b.catKey = data.catKey; b.catName = data.catName; }
     blocks[dayIdx].push(b);
@@ -1022,14 +985,14 @@
     }
   }
 
-  function renderCatRow(selectedKey){
+  function renderKindRow(selectedKey){
     var row = document.getElementById("catRow");
     row.innerHTML = "";
-    CUSTOM_CATEGORIES.forEach(function(c){
+    CUSTOM_KINDS.forEach(function(c){
       var btn = document.createElement("button");
       btn.type = "button";
       btn.className = "catbtn" + (c.key === selectedKey ? " selected" : "");
-      btn.style.setProperty("--cbtn-color", catColorVar(c.key));
+      btn.style.setProperty("--cbtn-color", c.color);
       btn.textContent = c.name;
       btn.dataset.key = c.key;
       btn.addEventListener("click", function(){
@@ -1050,9 +1013,9 @@
     document.getElementById("f-note").value = opts.note || "";
     fillDaySelect(opts.dayIdx);
     var catField = document.getElementById("catField");
-    if(opts.type === "custom" && !opts.recurringKey){
+    if(!opts.recurringKey && !opts.fromLibrary){
       catField.hidden = false;
-      renderCatRow(opts.category || "professional");
+      renderKindRow(opts.kind || "workout");
     } else {
       catField.hidden = true;
     }
@@ -1074,13 +1037,13 @@
     closeLibraryDrawer();
   }
   function openModalForCustom(dayIdx){
-    openModal({mode:"add", type:"custom", dayIdx:dayIdx, label:"", title:"New custom block", category:"professional"});
+    openModal({mode:"add", dayIdx:dayIdx, label:"", title:"New custom block", kind:"workout"});
   }
   function openModalForEdit(b, dayIdx){
     openModal({
-      mode:"edit", type:b.type, dayIdx:dayIdx, blockId:b.id, label:b.label, lockTitle:(b.type!=="custom"),
-      title:"Edit block", time:b.time, note:b.note, category:b.category, recurringKey:b.recurringKey,
-      tag:b.tag, catKey:b.catKey, catName:b.catName
+      mode:"edit", dayIdx:dayIdx, blockId:b.id, label:b.label,
+      lockTitle:!!b.fromLibrary, fromLibrary:b.fromLibrary, recurringKey:b.recurringKey,
+      title:"Edit block", time:b.time, note:b.note, kind:kindOfBlock(b)
     });
   }
 
@@ -1115,19 +1078,25 @@
     var dayIdx = parseInt(document.getElementById("f-day").value, 10);
     var time = document.getElementById("f-time").value.trim();
     var note = document.getElementById("f-note").value.trim();
-    var category = null;
-    if(modalState.type === "custom" && !modalState.recurringKey){
+
+    var canPickKind = !modalState.recurringKey && !modalState.fromLibrary;
+    var kind = null;
+    if(canPickKind){
       var sel = document.querySelector("#catRow .catbtn.selected");
-      category = sel ? sel.dataset.key : "professional";
+      kind = sel ? sel.dataset.key : "workout";
+    }
+    function applyKind(target, k){
+      delete target.tag; delete target.catKey; delete target.catName; delete target.category;
+      if(k === "workout"){ target.type = "workout"; }
+      else if(k === "coding"){ target.type = "coding"; }
+      else { target.type = "custom"; target.category = k; }
     }
 
     var blocks = weekBlocks(viewMonday);
 
     if(modalState.mode === "add"){
-      var b = {id:genId(), type:modalState.type, label:title, time:time, note:note, done:false};
-      if(modalState.type === "workout"){ b.tag = modalState.tag; }
-      if(modalState.type === "coding"){ b.catKey = modalState.catKey; b.catName = modalState.catName; }
-      if(modalState.type === "custom"){ b.category = category; }
+      var b = {id:genId(), label:title, time:time, note:note, done:false};
+      applyKind(b, kind);
       blocks[dayIdx].push(b);
     } else {
       var found = null, fromDay = -1;
@@ -1136,10 +1105,10 @@
         if(idx !== -1){ found = blocks[i][idx]; fromDay = i; break; }
       }
       if(found){
-        if(modalState.type === "custom") found.label = title;
+        if(!modalState.fromLibrary) found.label = title;
         found.time = time;
         found.note = note;
-        if(modalState.type === "custom" && !modalState.recurringKey) found.category = category;
+        if(canPickKind) applyKind(found, kind);
         if(fromDay !== dayIdx){
           blocks[fromDay].splice(blocks[fromDay].indexOf(found),1);
           blocks[dayIdx].push(found);
@@ -1189,14 +1158,6 @@
   document.getElementById("closeLibraryBtn").addEventListener("click", closeLibraryDrawer);
   document.getElementById("libScrim").addEventListener("click", closeLibraryDrawer);
 
-  // ---------- banner ----------
-  document.getElementById("clearExamplesBtn").addEventListener("click", clearExamples);
-  document.getElementById("dismissBanner").addEventListener("click", function(){
-    state.bannerDismissed = true;
-    saveState();
-    renderBanner();
-  });
-
   // ---------- theme ----------
   function applyTheme(t){
     document.documentElement.setAttribute("data-theme", t);
@@ -1210,7 +1171,6 @@
 
   // ---------- init ----------
   loadState();
-  maybeSeed();
   applyTheme(state.theme || (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
   renderLibrary();
   renderAll();
