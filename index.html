@@ -275,8 +275,8 @@
     background-color:var(--card-accent,var(--accent-coding));
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.5l3.2 3.2L13 4.8'/%3E%3C/svg%3E");
   }
-  .b-title{font-size:13.5px;font-weight:530;flex:1;text-wrap:balance;}
-  .b-actions{display:flex;gap:2px;margin-left:auto;}
+  .b-title{font-size:13.5px;font-weight:530;flex:1;min-width:0;overflow-wrap:anywhere;text-wrap:balance;}
+  .b-actions{display:flex;gap:2px;margin-left:auto;flex:none;}
   .b-actions button{
     border:none;background:transparent;color:var(--text-3);cursor:pointer;
     width:22px;height:22px;border-radius:6px;display:flex;align-items:center;justify-content:center;
@@ -754,6 +754,22 @@
     if(el) el.remove();
   }
 
+  // A very long title (especially one long unbroken word/URL) can otherwise
+  // overflow its row and shove the edit/delete buttons out of the card. Once
+  // the card is actually laid out, shrink the title font-size step by step
+  // until it fits within a few lines — the buttons never move, since they sit
+  // in a fixed-width flex slot that the title (min-width:0) can't push into.
+  function fitBlockTitles(container){
+    var sizes = [13.5, 12.5, 11.5, 10.5, 9.5];
+    var maxLines = 3;
+    container.querySelectorAll(".b-title").forEach(function(el){
+      for(var i=0;i<sizes.length;i++){
+        el.style.fontSize = sizes[i] + "px";
+        if(el.scrollHeight <= sizes[i] * 1.35 * maxLines + 1) break;
+      }
+    });
+  }
+
   function renderDays(){
     ensureRecurring(viewMonday);
     var grid = document.getElementById("daysGrid");
@@ -831,6 +847,7 @@
         grid.appendChild(col);
       })(i);
     }
+    fitBlockTitles(grid);
   }
 
   function blockAccent(b){
