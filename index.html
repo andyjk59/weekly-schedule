@@ -25,6 +25,7 @@
     --cat-coursework:#7FA9CC;
     --cat-social:#D6AE55;
     --tag-red:#C1584F;
+    --accent-todo:#8B7CB6;
 
     --today:#C9564B;
   }
@@ -53,6 +54,7 @@
       --cat-coursework:#9BC4E3;
       --cat-social:#E8C877;
       --tag-red:#E08078;
+      --accent-todo:#A897D6;
 
       --today:#E5776F;
     }
@@ -81,6 +83,7 @@
     --cat-coursework:#9BC4E3;
     --cat-social:#E8C877;
     --tag-red:#E08078;
+    --accent-todo:#A897D6;
 
     --today:#E5776F;
   }
@@ -222,16 +225,18 @@
   /* ---------- main / days ---------- */
   main.board{flex:1;min-width:0;padding:16px 20px 60px;overflow-x:auto;}
 
-  .days-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;}
+  .days-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;}
   @media(max-width:1099px){ .days-grid{grid-template-columns:repeat(auto-fit,minmax(210px,1fr));} }
   @media(max-width:640px){ .days-grid{grid-template-columns:1fr;} main.board{padding:14px 14px 60px;} }
 
   .day-col{
     display:flex;flex-direction:column;
-    background:var(--surface);border-radius:15px;
+    background:var(--surface);border-radius:15px;border:1.6px solid transparent;
     min-height:220px;overflow:hidden;box-shadow:0 1px 3px var(--shadow);
   }
   .day-col.dragover{outline:2px dashed var(--accent-coding);outline-offset:-2px;}
+  .day-col.day-todo{border-color:var(--accent-todo);}
+  .day-col.day-todo .dname{color:var(--accent-todo);}
   .day-head{padding:11px 13px 7px;display:flex;align-items:center;justify-content:space-between;gap:6px;}
   .day-head .dname{font-size:11.5px;font-weight:650;letter-spacing:.04em;text-transform:uppercase;color:var(--text-2);}
   .day-head .dnum{
@@ -641,9 +646,12 @@
   var viewMonth = new Date(today.getFullYear(), today.getMonth(), 1);
   var mode = "week";
 
+  // Index 7 is the "To Do" bucket — not a calendar day, just an extra column
+  // for anytime-this-week tasks. Older saved weeks only have 7 slots, so pad them.
   function weekBlocks(monday){
     var key = isoKey(monday);
-    if(!state.weeks[key]) state.weeks[key] = [[],[],[],[],[],[],[]];
+    if(!state.weeks[key]) state.weeks[key] = [[],[],[],[],[],[],[],[]];
+    while(state.weeks[key].length < 8){ state.weeks[key].push([]); }
     return state.weeks[key];
   }
 
@@ -728,15 +736,20 @@
     var blocks = weekBlocks(viewMonday);
     var todayIdx = dayIndexForToday(viewMonday);
 
-    for(var i=0;i<7;i++){
+    for(var i=0;i<8;i++){
       (function(dayIdx){
-        var date = addDays(viewMonday, dayIdx);
+        var isTodo = dayIdx === 7;
         var col = document.createElement("div");
-        col.className = "day-col" + (dayIdx === todayIdx ? " is-today" : "");
+        col.className = "day-col" + (dayIdx === todayIdx ? " is-today" : "") + (isTodo ? " day-todo" : "");
 
         var head = document.createElement("div");
         head.className = "day-head";
-        head.innerHTML = '<span class="dname">'+DAY_NAMES[dayIdx]+'</span><span class="dnum">'+date.getDate()+'</span>';
+        if(isTodo){
+          head.innerHTML = '<span class="dname">To Do</span>';
+        } else {
+          var date = addDays(viewMonday, dayIdx);
+          head.innerHTML = '<span class="dname">'+DAY_NAMES[dayIdx]+'</span><span class="dnum">'+date.getDate()+'</span>';
+        }
         col.appendChild(head);
 
         var body = document.createElement("div");
@@ -955,7 +968,7 @@
   function moveBlock(blockId, newDayIdx){
     var blocks = weekBlocks(viewMonday);
     var found = null;
-    for(var i=0;i<7;i++){
+    for(var i=0;i<8;i++){
       var idx = blocks[i].findIndex(function(x){ return x.id === blockId; });
       if(idx !== -1){ found = blocks[i].splice(idx,1)[0]; break; }
     }
@@ -975,11 +988,10 @@
   function fillDaySelect(selected){
     var sel = document.getElementById("f-day");
     sel.innerHTML = "";
-    for(var i=0;i<7;i++){
-      var date = addDays(viewMonday, i);
+    for(var i=0;i<8;i++){
       var opt = document.createElement("option");
       opt.value = i;
-      opt.textContent = DAY_NAMES[i] + " · " + fmtShort(date);
+      opt.textContent = i === 7 ? "To Do" : DAY_NAMES[i] + " · " + fmtShort(addDays(viewMonday, i));
       if(i === selected) opt.selected = true;
       sel.appendChild(opt);
     }
@@ -1100,7 +1112,7 @@
       blocks[dayIdx].push(b);
     } else {
       var found = null, fromDay = -1;
-      for(var i=0;i<7;i++){
+      for(var i=0;i<8;i++){
         var idx = blocks[i].findIndex(function(x){ return x.id === modalState.blockId; });
         if(idx !== -1){ found = blocks[i][idx]; fromDay = i; break; }
       }
