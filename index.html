@@ -247,6 +247,8 @@
 
   .day-body{flex:1;padding:5px 9px;display:flex;flex-direction:column;gap:8px;min-height:70px;}
   .day-empty{color:var(--text-3);font-size:11.5px;text-align:center;padding:16px 4px;}
+  .drop-indicator{height:3px;border-radius:2px;background:var(--accent-coding);flex:0 0 auto;}
+  .block.dragging{opacity:.35;}
 
   .day-foot{padding:6px 9px 11px;}
   .btn-add-day{
@@ -729,6 +731,29 @@
     return -1;
   }
 
+  // Where in a day's block list a drop at this Y position should land —
+  // excludes the card currently being dragged so reordering within a day
+  // measures against everything else, not its own old position.
+  function getInsertIndex(bodyEl, clientY){
+    var cards = Array.from(bodyEl.querySelectorAll(".block:not(.dragging)"));
+    for(var i=0;i<cards.length;i++){
+      var rect = cards[i].getBoundingClientRect();
+      if(clientY < rect.top + rect.height/2) return i;
+    }
+    return cards.length;
+  }
+  function showDropIndicator(bodyEl, index){
+    var indicator = bodyEl.querySelector(".drop-indicator") || document.createElement("div");
+    indicator.className = "drop-indicator";
+    var cards = Array.from(bodyEl.querySelectorAll(".block:not(.dragging)"));
+    if(index >= cards.length){ bodyEl.appendChild(indicator); }
+    else { bodyEl.insertBefore(indicator, cards[index]); }
+  }
+  function removeDropIndicator(bodyEl){
+    var el = bodyEl.querySelector(".drop-indicator");
+    if(el) el.remove();
+  }
+
   function renderDays(){
     ensureRecurring(viewMonday);
     var grid = document.getElementById("daysGrid");
@@ -776,19 +801,30 @@
         foot.appendChild(addBtn);
         col.appendChild(foot);
 
-        col.addEventListener("dragover", function(e){ e.preventDefault(); col.classList.add("dragover"); });
-        col.addEventListener("dragleave", function(){ col.classList.remove("dragover"); });
+        col.addEventListener("dragover", function(e){
+          e.preventDefault();
+          col.classList.add("dragover");
+          showDropIndicator(body, getInsertIndex(body, e.clientY));
+        });
+        col.addEventListener("dragleave", function(e){
+          if(!col.contains(e.relatedTarget)){
+            col.classList.remove("dragover");
+            removeDropIndicator(body);
+          }
+        });
         col.addEventListener("drop", function(e){
           e.preventDefault();
           col.classList.remove("dragover");
+          var insertAt = getInsertIndex(body, e.clientY);
+          removeDropIndicator(body);
           var raw = e.dataTransfer.getData("text/plain");
           if(!raw) return;
           var data;
           try{ data = JSON.parse(raw); }catch(err){ return; }
           if(data.source === "library"){
-            addBlockFromLibrary(dayIdx, data);
+            addBlockFromLibrary(dayIdx, data, insertAt);
           } else if(data.source === "block"){
-            moveBlock(data.blockId, dayIdx);
+            moveBlock(data.blockId, dayIdx, insertAt);
           }
         });
 
@@ -850,6 +886,10 @@
     });
     card.addEventListener("dragstart", function(e){
       e.dataTransfer.setData("text/plain", JSON.stringify({source:"block", blockId:b.id}));
+      setTimeout(function(){ card.classList.add("dragging"); }, 0);
+    });
+    card.addEventListener("dragend", function(){
+      card.classList.remove("dragging");
     });
 
     return card;
@@ -955,24 +995,34 @@
   // ---------- mutations ----------
   function genId(){ return "b_" + Date.now().toString(36) + Math.random().toString(36).slice(2,7); }
 
-  function addBlockFromLibrary(dayIdx, data){
+  function addBlockFromLibrary(dayIdx, data, insertIndex){
     var blocks = weekBlocks(viewMonday);
     var b = {id:genId(), type:data.type, label:data.label, done:false, fromLibrary:true};
     if(data.type === "workout"){ b.tag = data.tag; }
     if(data.type === "coding"){ b.catKey = data.catKey; b.catName = data.catName; }
-    blocks[dayIdx].push(b);
+    var arr = blocks[dayIdx];
+    var at = (insertIndex == null) ? arr.length : Math.max(0, Math.min(insertIndex, arr.length));
+    arr.splice(at, 0, b);
     saveState();
     renderAll();
   }
 
-  function moveBlock(blockId, newDayIdx){
+  function moveBlock(blockId, newDayIdx, insertIndex){
     var blocks = weekBlocks(viewMonday);
-    var found = null;
+    var found = null, fromDay = -1, fromIdx = -1;
     for(var i=0;i<8;i++){
       var idx = blocks[i].findIndex(function(x){ return x.id === blockId; });
-      if(idx !== -1){ found = blocks[i].splice(idx,1)[0]; break; }
+      if(idx !== -1){ fromDay = i; fromIdx = idx; break; }
     }
-    if(found){ blocks[newDayIdx].push(found); saveState(); renderAll(); }
+    if(fromDay === -1) return;
+    found = blocks[fromDay].splice(fromIdx, 1)[0];
+    var arr = blocks[newDayIdx];
+    var at = (insertIndex == null) ? arr.length : insertIndex;
+    if(fromDay === newDayIdx && fromIdx < at){ at -= 1; }
+    at = Math.max(0, Math.min(at, arr.length));
+    arr.splice(at, 0, found);
+    saveState();
+    renderAll();
   }
 
   function deleteBlock(blockId, dayIdx){
