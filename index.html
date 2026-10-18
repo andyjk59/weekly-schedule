@@ -518,7 +518,8 @@
   // Recurring weekly commitments — auto-populated on every week. These sit outside
   // the Professional/Coursework/Social categories; each just carries a fixed color.
   var RECURRING_BLOCKS = [
-    {key:"capstone", dayIdx:0, label:"Capstone Project Work", time:"2:00 – 6:00 PM", color:"var(--cat-coursework)"},
+    {key:"capstone", dayIdx:0, label:"Capstone Project Work", time:"3:00 – 6:00 PM", color:"var(--cat-coursework)"},
+    {key:"capstone-meeting", dayIdx:2, label:"Capstone Meeting", time:"2:00 – 3:00 PM", color:"var(--cat-coursework)"},
     {key:"guidde-tue", dayIdx:1, label:"Work @ Guidde", time:"9:00 AM – 5:00 PM", color:"var(--tag-red)"},
     {key:"guidde-thu", dayIdx:3, label:"Work @ Guidde", time:"9:00 AM – 1:00 PM", color:"var(--tag-red)"},
     {key:"agentic-ai", dayIdx:3, label:"Agentic AI", time:"6:10 – 8:40 PM", color:"var(--cat-coursework)"}
@@ -543,6 +544,35 @@
     migrateRecurringColors();
     stripExamples();
     migrateBlockTypes();
+    migrateRecurringSchedule();
+  }
+
+  // Bump this whenever RECURRING_BLOCKS changes in a way weeks that were already
+  // opened should pick up. The migration below runs once per bump, for the
+  // current week onward only (past weeks keep showing what they did), so a
+  // recurring block you later delete from one week stays deleted.
+  var RECURRING_VERSION = 2;
+  function migrateRecurringSchedule(){
+    if((state.recurringVersion || 0) >= RECURRING_VERSION) return;
+    var thisMonday = isoKey(startOfWeek(today));
+    Object.keys(state.weeks).forEach(function(wk){
+      if(wk < thisMonday || !state.recurringSeeded[wk]) return;
+      var week = state.weeks[wk];
+      // v2: Capstone Project Work moved from 2–6 to 3–6 (unless you edited the time)
+      week[0].forEach(function(b){
+        if(b.recurringKey === "capstone" && b.time === "2:00 – 6:00 PM") b.time = "3:00 – 6:00 PM";
+      });
+      // v2: weekly Capstone Meeting added on Wednesday
+      if(!week[2].some(function(b){ return b.recurringKey === "capstone-meeting"; })){
+        var def = RECURRING_BLOCKS.filter(function(r){ return r.key === "capstone-meeting"; })[0];
+        week[2].unshift({
+          id:genId(), type:"custom", label:def.label, time:def.time, note:"",
+          color:def.color, done:false, recurringKey:def.key
+        });
+      }
+    });
+    state.recurringVersion = RECURRING_VERSION;
+    saveState();
   }
 
   // "Coding Practice" blocks (a long list of specific topics) became a single
